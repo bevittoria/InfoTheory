@@ -1,3 +1,5 @@
+# Non funziona :), sballate tutte le communities. Il problema potrebbe forse essere in optimize_partitions, non so se muoversi su tutti i vicini sia il metodo migliore
+
 import numpy as np
 import networkx as nx
 from collections import defaultdict
