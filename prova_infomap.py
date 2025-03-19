@@ -40,7 +40,7 @@ def compute_map_equation(graph, transition_matrix, visit_probs, partition):
     teleport_term = defaultdict(float) # Initialize teleport probabilities
     non_teleport = defaultdict(float) # Initialize exit probabilities
 
-    tau = 0.15  # Teleport probability
+    tau = 0.01  # Teleport probability
     node_to_index = {node: idx for idx, node in enumerate(graph.nodes)}
     n = len(set(partition.values()))  # Count the number of unique partitions
     q = defaultdict(float)  # Initialize exit probabilities
@@ -48,7 +48,8 @@ def compute_map_equation(graph, transition_matrix, visit_probs, partition):
     for node, module in partition.items():
         module_probs[module] += visit_probs[node] # Compute module probabilities as sum of visit probabilities 
         ni = sum(1 for m in graph.nodes if partition[m] == module)  # Count nodes in the partition
-        teleport_term[module] += tau * (n - ni) / (n-1) * visit_probs[node] 
+        #teleport_term[module] += tau * (n - ni) / (n-1) * visit_probs[node] 
+        teleport_term[module] += 0
         for neighbor in graph.neighbors(node): 
             if partition[neighbor] != module: # If neighbor is in a different module
                 node_idx = node_to_index[node] # Get index of current node
@@ -131,10 +132,10 @@ def greedy_optimize_partition(graph, transition_matrix, iterations):
 
 
 # Generate a synthetic graph
-sizes = [20, 20]  # Two communities of 50 nodes each
-p_in = 0.7  # Probability of edges within communities
+sizes = [20, 30, 25, 35, 40]  # Five communities with different sizes
+p_in = 0.5  # Probability of edges within communities
 p_out = 0.02  # Probability of edges between communities
-G = nx.stochastic_block_model(sizes, [[p_in, p_out], [p_out, p_in]]) # SBM
+G = nx.stochastic_block_model(sizes, [[p_in if i == j else p_out for j in range(len(sizes))] for i in range(len(sizes))])  # SBM
 
 transition_matrix = compute_transition_matrix(G)
 communities = greedy_optimize_partition(G, transition_matrix, iterations=100000)
