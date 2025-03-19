@@ -13,7 +13,7 @@ def compute_transition_matrix(graph):
     return adjacency / row_sums  # Normalize rows to get transition probabilities
 
 
-def simulate_random_walk(graph, transition_matrix, steps=1000):
+def simulate_random_walk(graph, transition_matrix, steps=500000):
     """Simulate a long random walk to estimate node visit frequencies"""
     nodes = list(graph.nodes)
     node_to_index = {node: idx for idx, node in enumerate(nodes)}  # Map nodes to their indices
@@ -34,9 +34,8 @@ def simulate_random_walk(graph, transition_matrix, steps=1000):
     return {node: visit_counts[node] / total_visits for node in graph.nodes} # Normalize visit counts to get probabilities
 
 
-def compute_map_equation(graph, transition_matrix, partition):
+def compute_map_equation(graph, transition_matrix, visit_probs, partition):
     """Compute the map equation for the current partitioning"""
-    visit_probs = simulate_random_walk(graph, transition_matrix)
     module_probs = defaultdict(float) # Initialize module probabilities
     teleport_term = defaultdict(float) # Initialize teleport probabilities
     non_teleport = defaultdict(float) # Initialize exit probabilities
@@ -72,24 +71,26 @@ def compute_map_equation(graph, transition_matrix, partition):
     first_term = sum(q[module] for module in module_probs.keys()) * safe_log2(sum(q[module] for module in module_probs.keys()))
     second_term = - 2 * sum(q[module] * safe_log2(q[module]) for module in module_probs.keys())
     third_term = - sum(visit_probs[node] * safe_log2(visit_probs[node]) for node in graph.nodes)
-    fourth_term = sum(q[module] * safe_log2(q[module] + sum(visit_probs[node] for node in graph.nodes if partition[node] == module)) for module in module_probs.keys())
+    fourth_term = sum((q[module] + module_probs[module]) * (safe_log2(q[module] + module_probs[module])) for module in module_probs.keys())
 
     description_length = first_term + second_term + third_term + fourth_term
 
     return description_length # Return the map equation
 
 
-def optimize_partition(graph, transition_matrix, iterations=10):
+def optimize_partition(graph, transition_matrix, iterations):
     """Optimize the partitioning to minimize the map equation"""
+    visit_probs = simulate_random_walk(graph, transition_matrix)
+
     partition = {node: node for node in graph.nodes}  # Start with each node as its own module
     for _ in range(iterations):
         for node in graph.nodes:
             best_module = partition[node] # Initialize best module as current module
-            best_score = compute_map_equation(graph, transition_matrix, partition) 
+            best_score = compute_map_equation(graph, transition_matrix, visit_probs, partition) 
 
             for neighbor in graph.neighbors(node): # Try moving node to each neighbor's module
                 partition[node] = partition[neighbor] # Move node to neighbor's module
-                new_score = compute_map_equation(graph, transition_matrix, partition) # Compute new map equation score
+                new_score = compute_map_equation(graph, transition_matrix, visit_probs, partition) # Compute new map equation score
                 if new_score <= best_score: # If new score is better, update best module and score
                     best_module = partition[node]
                     best_score = new_score
@@ -97,15 +98,46 @@ def optimize_partition(graph, transition_matrix, iterations=10):
             partition[node] = best_module  # Keep the best move
     return partition
 
+def greedy_optimize_partition(graph, transition_matrix, iterations):
+    """Greedy search to minimize the map equation by merging best modules."""
+    visit_probs = simulate_random_walk(graph, transition_matrix)
+
+    # Start with each node as its own module
+    partition = {node: node for node in graph.nodes}
+    
+    for _ in range(iterations):
+        improved = False
+        module_list = list(set(partition.values()))  # Get unique communities
+        
+        for i in range(len(module_list)):  # Merging each pair of communities and see if it improves the map equation
+            for j in range(len(module_list)):  # Compare each pair
+                if i != j:  # Skip if same community
+                    temp_partition = partition.copy() # Temporary partition where we merge module j into module i
+                    for node in graph.nodes:
+                        if partition[node] == module_list[j]:  
+                            temp_partition[node] = module_list[i] # Merge module j into module i
+                    
+                    old_score = compute_map_equation(graph, transition_matrix, visit_probs, partition) # Compute old map equation
+                    new_score = compute_map_equation(graph, transition_matrix, visit_probs, temp_partition) # Compute new map equation
+                    
+                    if new_score < old_score:  # If merging improves score
+                        partition = temp_partition  # Apply the merge
+                        improved = True
+        
+        if not improved:  # Stop if no improvement
+            break
+    return partition
+
+
 
 # Generate a synthetic graph
-sizes = [20, 10]  # Two communities of 50 nodes each
-p_in = 0.5  # Probability of edges within communities
-p_out = 0.05  # Probability of edges between communities
+sizes = [20, 20]  # Two communities of 50 nodes each
+p_in = 0.7  # Probability of edges within communities
+p_out = 0.02  # Probability of edges between communities
 G = nx.stochastic_block_model(sizes, [[p_in, p_out], [p_out, p_in]]) # SBM
 
 transition_matrix = compute_transition_matrix(G)
-communities = optimize_partition(G, transition_matrix, iterations=10)
+communities = greedy_optimize_partition(G, transition_matrix, iterations=100000)
 
 print("Number of communities detected:", len(set(communities.values())))
 print("Communities detected:")
